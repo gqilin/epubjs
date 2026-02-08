@@ -1,5 +1,6 @@
 import EventEmitter from "event-emitter";
-import {extend, borders, uuid, isNumber, bounds, defer, createBlobUrl, revokeBlobUrl} from "../../utils/core";
+import {extend, borders, uuid, isNumber, bounds, defer} from "../../utils/core";
+import Url from "../../utils/url";
 import EpubCFI from "../../epubcfi";
 import Contents from "../../contents";
 import { EVENTS } from "../../utils/constants";
@@ -9,16 +10,13 @@ class IframeView {
 	constructor(section, options) {
 		this.settings = extend({
 			ignoreClass : "",
-			axis: undefined, //options.layout && options.layout.props.flow === "scrolled" ? "vertical" : "horizontal",
+			axis: undefined,
 			direction: undefined,
 			width: 0,
 			height: 0,
 			layout: undefined,
 			globalLayoutProperties: {},
-			method: undefined,
-			forceRight: false,
-			allowScriptedContent: false,
-			allowPopups: false
+			forceRight: false
 		}, options || {});
 
 		this.id = "epubjs-view-" + uuid();
@@ -74,41 +72,27 @@ class IframeView {
 
 	create() {
 
-		if(this.iframe) {
-			return this.iframe;
+		if(this.contentDiv) {
+			return this.contentDiv;
 		}
 
 		if(!this.element) {
 			this.element = this.createContainer();
 		}
 
-		this.iframe = document.createElement("iframe");
-		this.iframe.id = this.id;
-		this.iframe.scrolling = "no"; // Might need to be removed: breaks ios width calculations
-		this.iframe.style.overflow = "hidden";
-		this.iframe.seamless = "seamless";
-		// Back up if seamless isn't supported
-		this.iframe.style.border = "none";
-
-		// sandbox
-		this.iframe.sandbox = "allow-same-origin";
-		if (this.settings.allowScriptedContent) {
-			this.iframe.sandbox += " allow-scripts";
-		}
-		if (this.settings.allowPopups) {
-			this.iframe.sandbox += " allow-popups";
-		}
-		
-		this.iframe.setAttribute("enable-annotation", "true");
+		this.contentDiv = document.createElement("div");
+		this.contentDiv.id = this.id;
+		this.contentDiv.style.overflow = "hidden";
+		this.contentDiv.style.border = "none";
+		this.contentDiv.setAttribute("enable-annotation", "true");
 
 		this.resizing = true;
 
-		// this.iframe.style.display = "none";
 		this.element.style.visibility = "hidden";
-		this.iframe.style.visibility = "hidden";
+		this.contentDiv.style.visibility = "hidden";
 
-		this.iframe.style.width = "0";
-		this.iframe.style.height = "0";
+		this.contentDiv.style.width = "0";
+		this.contentDiv.style.height = "0";
 		this._width = 0;
 		this._height = 0;
 
@@ -118,26 +102,7 @@ class IframeView {
 
 		this.elementBounds = bounds(this.element);
 
-		// if(width || height){
-		//   this.resize(width, height);
-		// } else if(this.width && this.height){
-		//   this.resize(this.width, this.height);
-		// } else {
-		//   this.iframeBounds = bounds(this.iframe);
-		// }
-
-
-		if(("srcdoc" in this.iframe)) {
-			this.supportsSrcdoc = true;
-		} else {
-			this.supportsSrcdoc = false;
-		}
-
-		if (!this.settings.method) {
-			this.settings.method = this.supportsSrcdoc ? "srcdoc" : "write";
-		}
-
-		return this.iframe;
+		return this.contentDiv;
 	}
 
 	render(request, show) {
@@ -210,9 +175,9 @@ class IframeView {
 	}
 
 	reset () {
-		if (this.iframe) {
-			this.iframe.style.width = "0";
-			this.iframe.style.height = "0";
+		if (this.contentDiv) {
+			this.contentDiv.style.width = "0";
+			this.contentDiv.style.height = "0";
 			this._width = 0;
 			this._height = 0;
 			this._textWidth = undefined;
@@ -243,21 +208,21 @@ class IframeView {
 	// Lock an axis to element dimensions, taking borders into account
 	lock(what, width, height) {
 		var elBorders = borders(this.element);
-		var iframeBorders;
+		var divBorders;
 
-		if(this.iframe) {
-			iframeBorders = borders(this.iframe);
+		if(this.contentDiv) {
+			divBorders = borders(this.contentDiv);
 		} else {
-			iframeBorders = {width: 0, height: 0};
+			divBorders = {width: 0, height: 0};
 		}
 
 		if(what == "width" && isNumber(width)){
-			this.lockedWidth = width - elBorders.width - iframeBorders.width;
+			this.lockedWidth = width - elBorders.width - divBorders.width;
 			// this.resize(this.lockedWidth, width); //  width keeps ratio correct
 		}
 
 		if(what == "height" && isNumber(height)){
-			this.lockedHeight = height - elBorders.height - iframeBorders.height;
+			this.lockedHeight = height - elBorders.height - divBorders.height;
 			// this.resize(width, this.lockedHeight);
 		}
 
@@ -265,12 +230,12 @@ class IframeView {
 			 isNumber(width) &&
 			 isNumber(height)){
 
-			this.lockedWidth = width - elBorders.width - iframeBorders.width;
-			this.lockedHeight = height - elBorders.height - iframeBorders.height;
+			this.lockedWidth = width - elBorders.width - divBorders.width;
+			this.lockedHeight = height - elBorders.height - divBorders.height;
 			// this.resize(this.lockedWidth, this.lockedHeight);
 		}
 
-		if(this.displayed && this.iframe) {
+		if(this.displayed && this.contentDiv) {
 
 			// this.contents.layout();
 			this.expand();
@@ -288,7 +253,7 @@ class IframeView {
 
 		var textWidth, textHeight;
 
-		if(!this.iframe || this._expanding) return;
+		if(!this.contentDiv || this._expanding) return;
 
 		this._expanding = true;
 
@@ -338,13 +303,13 @@ class IframeView {
 
 		if(isNumber(width)){
 			this.element.style.width = width + "px";
-			this.iframe.style.width = width + "px";
+			this.contentDiv.style.width = width + "px";
 			this._width = width;
 		}
 
 		if(isNumber(height)){
 			this.element.style.height = height + "px";
-			this.iframe.style.height = height + "px";
+			this.contentDiv.style.height = height + "px";
 			this._height = height;
 		}
 
@@ -385,73 +350,96 @@ class IframeView {
 		var loading = new defer();
 		var loaded = loading.promise;
 
-		if(!this.iframe) {
-			loading.reject(new Error("No Iframe Available"));
+		if(!this.contentDiv) {
+			loading.reject(new Error("No Content Div Available"));
 			return loaded;
 		}
 
-		this.iframe.onload = function(event) {
+		// Append to container first
+		this.element.appendChild(this.contentDiv);
 
-			this.onLoad(event, loading);
+		// Parse the HTML string to extract body content
+		var parser = new DOMParser();
+		var doc = parser.parseFromString(contents, "text/html");
+		var body = doc.querySelector("body");
 
-		}.bind(this);
-
-		if (this.settings.method === "blobUrl") {
-			this.blobUrl = createBlobUrl(contents, "application/xhtml+xml");
-			this.iframe.src = this.blobUrl;
-			this.element.appendChild(this.iframe);
-		} else if(this.settings.method === "srcdoc"){
-			this.iframe.srcdoc = contents;
-			this.element.appendChild(this.iframe);
-		} else {
-
-			this.element.appendChild(this.iframe);
-
-			this.document = this.iframe.contentDocument;
-
-			if(!this.document) {
-				loading.reject(new Error("No Document Available"));
-				return loaded;
-			}
-
-			this.iframe.contentDocument.open();
-			// For Cordova windows platform
-			if(window.MSApp && MSApp.execUnsafeLocalFunction) {
-				var outerThis = this;
-				MSApp.execUnsafeLocalFunction(function () {
-					outerThis.iframe.contentDocument.write(contents);
-				});
-			} else {
-				this.iframe.contentDocument.write(contents);
-			}
-			this.iframe.contentDocument.close();
-
+		if (!body) {
+			loading.reject(new Error("No body element in content"));
+			return loaded;
 		}
 
-		return loaded;
-	}
+		// Create URL resolver for this section
+		var sectionUrl = new Url(this.section.url);
 
-	onLoad(event, promise) {
+		// Process and move body children to contentDiv
+		var childNodes = Array.from(body.childNodes);
+		for (let node of childNodes) {
+			// Convert relative paths in elements
+			this.resolveUrls(node, sectionUrl);
+			this.contentDiv.appendChild(node);
+		}
 
-		this.window = this.iframe.contentWindow;
-		this.document = this.iframe.contentDocument;
+		// Copy and process head elements (styles)
+		var head = doc.querySelector("head");
+		if (head) {
+			var styles = head.querySelectorAll("style, link[rel='stylesheet']");
+			styles.forEach(style => {
+				let clonedStyle = style.cloneNode(true);
 
-		this.contents = new Contents(this.document, this.document.body, this.section.cfiBase, this.section.index);
+				// Process link elements - convert to style tags
+				if (clonedStyle.tagName === 'LINK') {
+					const href = clonedStyle.getAttribute('href');
+					if (href && !href.startsWith('data:')) {
+						const resolvedUrl = sectionUrl.resolve(href);
+
+						// Fetch CSS and convert to style tag to avoid MIME type issues
+						fetch(resolvedUrl)
+							.then(response => response.text())
+							.then(cssText => {
+								// Resolve relative URLs within the CSS
+								const resolvedCss = this.resolveImportUrls(cssText, sectionUrl);
+								const styleTag = document.createElement('style');
+								styleTag.textContent = resolvedCss;
+								document.head.appendChild(styleTag);
+							})
+							.catch(err => {
+								// Fallback: still try to load as link if fetch fails
+								clonedStyle.href = resolvedUrl;
+								document.head.appendChild(clonedStyle);
+							});
+					}
+				}
+				// Process style elements with @import
+				else if (clonedStyle.tagName === 'STYLE') {
+					if (clonedStyle.textContent) {
+						clonedStyle.textContent = this.resolveImportUrls(clonedStyle.textContent, sectionUrl);
+					}
+					document.head.appendChild(clonedStyle);
+				}
+			});
+		}
+
+		this.document = document;
+		this.window = window;
+
+		// Create Contents wrapper for the DOM
+		this.contents = new Contents(document, this.contentDiv, this.section.cfiBase, this.section.index);
 
 		this.rendering = false;
 
-		var link = this.document.querySelector("link[rel='canonical']");
+		// Add canonical link
+		var link = document.querySelector("link[rel='canonical']");
 		if (link) {
 			link.setAttribute("href", this.section.canonical);
 		} else {
-			link = this.document.createElement("link");
+			link = document.createElement("link");
 			link.setAttribute("rel", "canonical");
 			link.setAttribute("href", this.section.canonical);
-			this.document.querySelector("head").appendChild(link);
+			document.querySelector("head").appendChild(link);
 		}
 
 		this.contents.on(EVENTS.CONTENTS.EXPAND, () => {
-			if(this.displayed && this.iframe) {
+			if(this.displayed && this.contentDiv) {
 				this.expand();
 				if (this.contents) {
 					this.layout.format(this.contents);
@@ -460,7 +448,7 @@ class IframeView {
 		});
 
 		this.contents.on(EVENTS.CONTENTS.RESIZE, (e) => {
-			if(this.displayed && this.iframe) {
+			if(this.displayed && this.contentDiv) {
 				this.expand();
 				if (this.contents) {
 					this.layout.format(this.contents);
@@ -468,7 +456,106 @@ class IframeView {
 			}
 		});
 
-		promise.resolve(this.contents);
+		// Trigger onLoad immediately
+		this.onLoad(undefined, loading);
+
+		return loaded;
+	}
+
+	// Helper method to resolve relative URLs in DOM elements
+	resolveUrls(node, sectionUrl) {
+		if (node.nodeType !== 1) return; // Skip non-element nodes
+
+		const tagName = node.tagName;
+
+		// Handle img src
+		if (tagName === 'IMG' && node.src) {
+			const src = node.getAttribute('src');
+			if (src && !src.startsWith('data:')) {
+				node.src = sectionUrl.resolve(src);
+			}
+		}
+
+		// Handle link href
+		if (tagName === 'LINK' && node.href) {
+			const href = node.getAttribute('href');
+			if (href && !href.startsWith('data:')) {
+				node.href = sectionUrl.resolve(href);
+			}
+		}
+
+		// Handle script src
+		if (tagName === 'SCRIPT' && node.src) {
+			const src = node.getAttribute('src');
+			if (src && !src.startsWith('data:')) {
+				node.src = sectionUrl.resolve(src);
+			}
+		}
+
+		// Handle video/audio src and sources
+		if ((tagName === 'VIDEO' || tagName === 'AUDIO') && node.src) {
+			const src = node.getAttribute('src');
+			if (src && !src.startsWith('data:')) {
+				node.src = sectionUrl.resolve(src);
+			}
+		}
+
+		// Handle source elements in video/audio
+		if (tagName === 'SOURCE' && node.src) {
+			const src = node.getAttribute('src');
+			if (src && !src.startsWith('data:')) {
+				node.src = sectionUrl.resolve(src);
+			}
+		}
+
+		// Handle iframe src
+		if (tagName === 'IFRAME' && node.src) {
+			const src = node.getAttribute('src');
+			if (src && !src.startsWith('data:')) {
+				node.src = sectionUrl.resolve(src);
+			}
+		}
+
+		// Recursively process child nodes
+		for (let child of node.childNodes) {
+			this.resolveUrls(child, sectionUrl);
+		}
+	}
+
+	// Helper method to resolve @import URLs in CSS text
+	resolveImportUrls(cssText, sectionUrl) {
+		// Match @import url('...') and @import url("...") and @import '...' and @import "..."
+		let resolved = cssText.replace(/@import\s+(?:url\()?\s*['"]?([^'")\s]+)['"]?\)?/gi, (match, url) => {
+			if (url.startsWith('data:')) {
+				return match;
+			}
+			const resolvedUrl = sectionUrl.resolve(url);
+			// Return with url() format
+			return `@import url('${resolvedUrl}')`;
+		});
+
+		// Also resolve url() in CSS rules (for background-image, font-face src, etc)
+		resolved = resolved.replace(/url\s*\(\s*['"]?([^'")\s]+)['"]?\s*\)/gi, (match, url) => {
+			if (url.startsWith('data:') || url.startsWith('http')) {
+				return match;
+			}
+			const resolvedUrl = sectionUrl.resolve(url);
+			return `url('${resolvedUrl}')`;
+		});
+
+		return resolved;
+	}
+
+	onLoad(event, promise) {
+
+		this.window = window;
+		this.document = document;
+
+		// Contents object is already created in load()
+		// Just resolve the promise
+		if (promise) {
+			promise.resolve(this.contents);
+		}
 	}
 
 	setLayout(layout) {
@@ -537,22 +624,19 @@ class IframeView {
 
 		this.element.style.visibility = "visible";
 
-		if(this.iframe){
-			this.iframe.style.visibility = "visible";
+		if(this.contentDiv){
+			this.contentDiv.style.visibility = "visible";
 
-			// Remind Safari to redraw the iframe
-			this.iframe.style.transform = "translateZ(0)";
-			this.iframe.offsetWidth;
-			this.iframe.style.transform = null;
+			// Trigger a reflow to ensure visibility
+			this.contentDiv.offsetWidth;
 		}
 
 		this.emit(EVENTS.VIEWS.SHOWN, this);
 	}
 
 	hide() {
-		// this.iframe.style.display = "none";
 		this.element.style.visibility = "hidden";
-		this.iframe.style.visibility = "hidden";
+		this.contentDiv.style.visibility = "hidden";
 
 		this.stopExpanding = true;
 		this.emit(EVENTS.VIEWS.HIDDEN, this);
@@ -578,7 +662,7 @@ class IframeView {
 	}
 
 	locationOf(target) {
-		var parentPos = this.iframe.getBoundingClientRect();
+		var parentPos = this.contentDiv.getBoundingClientRect();
 		var targetPos = this.contents.locationOf(target, this.settings.ignoreClass);
 
 		return {
@@ -617,7 +701,7 @@ class IframeView {
 		data["epubcfi"] = cfiRange;
 
 		if (!this.pane) {
-			this.pane = new Pane(this.iframe, this.element);
+			this.pane = new Pane(this.element);
 		}
 
 		let m = new Highlight(range, className, data, attributes);
@@ -649,7 +733,7 @@ class IframeView {
 		data["epubcfi"] = cfiRange;
 
 		if (!this.pane) {
-			this.pane = new Pane(this.iframe, this.element);
+			this.pane = new Pane(this.element);
 		}
 
 		let m = new Underline(range, className, data, attributes);
@@ -814,10 +898,6 @@ class IframeView {
 			this.unmark(cfiRange);
 		}
 
-		if (this.blobUrl) {
-			revokeBlobUrl(this.blobUrl);
-		}
-
 		if(this.displayed){
 			this.displayed = false;
 
@@ -825,14 +905,14 @@ class IframeView {
 			this.contents.destroy();
 
 			this.stopExpanding = true;
-			this.element.removeChild(this.iframe);
+			this.element.removeChild(this.contentDiv);
 
 			if (this.pane) {
 				this.pane.element.remove();
 				this.pane = undefined;
 			}
 
-			this.iframe = undefined;
+			this.contentDiv = undefined;
 			this.contents = undefined;
 
 			this._textWidth = null;
@@ -841,8 +921,6 @@ class IframeView {
 			this._height = null;
 		}
 
-		// this.element.style.height = "0px";
-		// this.element.style.width = "0px";
 	}
 }
 

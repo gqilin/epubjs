@@ -26,9 +26,7 @@ class DefaultViewManager {
 			writingMode: undefined,
 			flow: "scrolled",
 			ignoreClass: "",
-			fullsize: undefined,
-			allowScriptedContent: false,
-			allowPopups: false
+			fullsize: undefined
 		});
 
 		extend(this.settings, options.settings || {});
@@ -38,12 +36,9 @@ class DefaultViewManager {
 			axis: this.settings.axis,
 			flow: this.settings.flow,
 			layout: this.layout,
-			method: this.settings.method, // srcdoc, blobUrl, write
 			width: 0,
 			height: 0,
-			forceEvenPages: true,
-			allowScriptedContent: this.settings.allowScriptedContent,
-			allowPopups: this.settings.allowPopups
+			forceEvenPages: true
 		};
 
 		this.rendered = false;
