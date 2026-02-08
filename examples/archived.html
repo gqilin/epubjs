@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>EPUB.js Archived Example</title>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.1.5/jszip.min.js"></script>
+  <script src="../dist/epub.js"></script>
+
+  <link rel="stylesheet" type="text/css" href="examples.css">
+<style>
+  .spreadsa{
+    width: 400px;
+    height: 600px;
+    box-shadow: 0 0 4px #ccc;
+    border-radius: 5px;
+    padding: 0;
+    position: relative;
+    margin: 10px auto;
+    top: calc(50vh - 400px);
+  }
+  img{
+    display: block;
+  }
+</style>
+</head>
+<body>
+  <div onclick="getList()">获取拆分的内容</div>
+  <div onclick="go()">跳转到指定位置</div>
+  <div onclick="highlight()">添加高亮</div>
+  <div id="viewer" class="spreads"></div>
+  <div id="prev" class="arrow">‹</div>
+  <div id="next" class="arrow">›</div>
+  <script>
+    // var book = ePub("https://syxy-reader.obs.cn-north-4.myhuaweicloud.com/books/16513543070661/container.xml");
+    
+    var book = ePub("https://www.dudu-book365.com/book-house/book_resource/2024-09-04/678545dd-7a21-4959-bdc0-8958ec583e5c/container.xml");
+    var rendition = book.renderTo("viewer", {
+      width: "100%",
+      height: 600,
+        encryption: {
+          isItEncrypted:false, //是否是加密文件
+        key: '15447240432769758334885793818569', //32位16进制密钥
+        mode: 'ECB', //加密模式可选CBC、ECB
+        iv: '', //32位16进制偏移量，mode为CBC时必传
+        }
+    });
+    console.log(book.locations,'book.locations',book);
+    
+    var displayed = rendition.display();
+
+
+    displayed.then(function(renderer){
+      // -- do stuff
+      
+    });
+
+    // Navigation loaded
+    book.loaded.navigation.then(function(toc){
+      // console.log(toc);
+    });
+    book.ready.then(function(){
+      console.log(book,'book.locations1111111');
+
+      rendition.on("selected", (cfiRange) => {
+        // this.cfiRange = cfiRange;
+        console.log(cfiRange,'cfiRange');
+        
+      });
+      
+    }).then(function(){
+      console.log(book,'book.locations222222');
+      
+    });
+
+    function go(){
+      let epubcfi ='epubcfi(/6/6!/4/8,/1:14,/1:37)'
+      rendition.display(epubcfi)
+    }
+    function highlight(){
+      let epubcfi ='epubcfi(/6/6!/4/8,/1:14,/1:37)'
+     rendition.annotations.highlight(epubcfi)
+    }
+
+    function getList(){
+      console.log("book.locations111111111111111");
+      rendition.getCurrentChapterSegments({segmentLength:30}).then((segments)=>{
+            console.log(segments,'segments');
+
+       
+            
+          })
+          console.log("book.locations1112222222222");
+    }
+
+    var next = document.getElementById("next");
+    next.addEventListener("click", function(){
+      // let a=book.locations.cfiFromPercentage(0.5)
+      // console.log(a,'kkkkkkkkkkkkkkkkkk');
+      
+      rendition.next();
+    }, false);
+
+    var prev = document.getElementById("prev");
+    prev.addEventListener("click", function(){
+      rendition.prev();
+    }, false);
+
+    var keyListener = function(e){
+
+      // Left Key
+      if ((e.keyCode || e.which) == 37) {
+        rendition.prev();
+      }
+
+      // Right Key
+      if ((e.keyCode || e.which) == 39) {
+        rendition.next();
+      }
+
+    };
+
+    rendition.on("keyup", keyListener);
+    document.addEventListener("keyup", keyListener, false);
+
+
+  </script>
+
+</body>
+</html>
