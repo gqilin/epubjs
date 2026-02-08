@@ -43,9 +43,7 @@ class Stage {
 
 		// Style Element
 		// container.style.fontSize = "0";
-		container.style.wordSpacing = "0";
-		container.style.lineHeight = "0";
-		container.style.verticalAlign = "top";
+				container.style.verticalAlign = "top";
 		container.style.position = "relative";
 
 		if(axis === "horizontal") {

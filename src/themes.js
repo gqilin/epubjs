@@ -10,7 +10,79 @@ class Themes {
 		this.rendition = rendition;
 		this._themes = {
 			"default" : {
-				"rules" : {},
+				"rules" : {
+					"*": {
+						"margin": "0",
+						"padding": "0"
+					},
+					"body": {
+						"font-family": "Georgia, serif",
+						"color": "#333333",
+						"font-size": "16px",
+						"line-height": "1.8",
+						"background-color": "#ffffff",
+						"word-spacing": "0.1em"
+					},
+					"p": {
+						"margin-bottom": "1em",
+						"text-indent": "2em",
+						"text-align": "justify"
+					},
+					"h1, h2, h3, h4, h5, h6": {
+						"margin-top": "1em",
+						"margin-bottom": "0.5em",
+						"line-height": "1.4",
+						"font-weight": "bold"
+					},
+					"h1": { "font-size": "1.8em" },
+					"h2": { "font-size": "1.6em" },
+					"h3": { "font-size": "1.4em" },
+					"h4": { "font-size": "1.2em" },
+					"h5": { "font-size": "1.1em" },
+					"h6": { "font-size": "1em" },
+					"ul, ol": {
+						"margin-bottom": "1em",
+						"margin-left": "2em"
+					},
+					"li": {
+						"margin-bottom": "0.5em",
+						"line-height": "1.8"
+					},
+					"blockquote": {
+						"margin": "1em 0",
+						"padding-left": "1em",
+						"border-left": "3px solid #cccccc",
+						"line-height": "1.8",
+						"color": "#666666"
+					},
+					"code": {
+						"font-family": "Monaco, 'Courier New', monospace",
+						"font-size": "0.9em",
+						"background-color": "#f5f5f5",
+						"padding": "0.2em 0.4em",
+						"border-radius": "3px"
+					},
+					"pre": {
+						"background-color": "#f5f5f5",
+						"padding": "1em",
+						"margin": "1em 0",
+						"overflow-x": "auto",
+						"line-height": "1.5"
+					},
+					"table": {
+						"border-collapse": "collapse",
+						"width": "100%",
+						"margin": "1em 0"
+					},
+					"th, td": {
+						"border": "1px solid #ddd",
+						"padding": "0.5em"
+					},
+					"th": {
+						"background-color": "#f5f5f5",
+						"font-weight": "bold"
+					}
+				},
 				"url" : "",
 				"serialized" : ""
 			}
