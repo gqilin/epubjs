@@ -105,6 +105,15 @@
             <el-divider direction="vertical" />
             <el-statistic title="总数" :value="totalSpines" class="stat-item" />
 
+            <el-button
+              @click="themeSettingsVisible = true"
+              type="default"
+              v-if="rendition"
+            >
+              <el-icon><Setting /></el-icon>
+              主题
+            </el-button>
+
             <el-upload
               action="#"
               :auto-upload="false"
@@ -138,6 +147,88 @@
           @close="infoMessage = ''"
           style="margin-bottom: 16px"
         />
+
+        <!-- 主题设置对话框 -->
+        <el-dialog
+          v-model="themeSettingsVisible"
+          title="阅读主题设置"
+          width="500px"
+          @close="saveThemeSettings"
+        >
+          <el-form label-width="100px">
+            <!-- 背景色 -->
+            <el-form-item label="背景色">
+              <div style="display: flex; gap: 10px; align-items: center;">
+                <el-color-picker v-model="theme.backgroundColor" show-alpha />
+                <span style="font-size: 12px; color: #999;">{{ theme.backgroundColor }}</span>
+              </div>
+            </el-form-item>
+
+            <!-- 字体颜色 -->
+            <el-form-item label="字体颜色">
+              <div style="display: flex; gap: 10px; align-items: center;">
+                <el-color-picker v-model="theme.fontColor" show-alpha />
+                <span style="font-size: 12px; color: #999;">{{ theme.fontColor }}</span>
+              </div>
+            </el-form-item>
+
+            <!-- 字体选择 -->
+            <el-form-item label="字体">
+              <el-select v-model="theme.fontFamily" style="width: 100%;">
+                <el-option
+                  v-for="font in fontFamilyOptions"
+                  :key="font.value"
+                  :label="font.label"
+                  :value="font.value"
+                />
+              </el-select>
+            </el-form-item>
+
+            <!-- 字号 -->
+            <el-form-item label="字号">
+              <el-select v-model.number="theme.fontSize" style="width: 100%;">
+                <el-option
+                  v-for="size in fontSizeOptions"
+                  :key="size.value"
+                  :label="size.label"
+                  :value="size.value"
+                />
+              </el-select>
+            </el-form-item>
+
+            <!-- 行高 -->
+            <el-form-item label="行高">
+              <el-select v-model.number="theme.lineHeight" style="width: 100%;">
+                <el-option
+                  v-for="height in lineHeightOptions"
+                  :key="height.value"
+                  :label="height.label"
+                  :value="height.value"
+                />
+              </el-select>
+            </el-form-item>
+          </el-form>
+
+          <!-- 预览 -->
+          <div style="margin-top: 20px; padding: 15px; border: 1px solid #ddd; border-radius: 4px;"
+            :style="{
+              backgroundColor: theme.backgroundColor,
+              color: theme.fontColor,
+              fontFamily: theme.fontFamily,
+              fontSize: theme.fontSize + 'px',
+              lineHeight: theme.lineHeight
+            }">
+            <p style="text-indent: 2em; margin-bottom: 8px;">这是预览文本。点击下方按钮应用主题设置到当前阅读内容。</p>
+            <p style="text-indent: 2em;">字体、字色、背景色和行高将立即生效，为您提供更舒适的阅读体验。</p>
+          </div>
+
+          <template #footer>
+            <span class="dialog-footer">
+              <el-button @click="themeSettingsVisible = false">取消</el-button>
+              <el-button type="primary" @click="applyTheme">应用主题</el-button>
+            </span>
+          </template>
+        </el-dialog>
 
         <!-- 阅读器容器 -->
         <div id="viewer" v-show="rendition" class="viewer">
@@ -184,7 +275,8 @@ import {
   Loading,
   DocumentAdd,
   Close,
-  Document
+  Document,
+  Setting
 } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 
@@ -204,6 +296,150 @@ const totalSpines = ref(0)
 const currentSpineIndex = ref(0)
 const isMobile = ref(false)
 const sidebarVisible = ref(true)
+
+// 主题设置
+const themeSettingsVisible = ref(false)
+const theme = ref({
+  backgroundColor: '#ffffff',
+  fontFamily: '-apple-system, BlinkMacSystemFont, "Microsoft YaHei", "微软雅黑", serif',
+  fontSize: 16,
+  fontColor: '#262626',
+  lineHeight: 1.8
+})
+
+// 字体选项
+const fontFamilyOptions = [
+  { label: '默认字体', value: '-apple-system, BlinkMacSystemFont, "Microsoft YaHei", "微软雅黑", serif' },
+  { label: '宋体', value: 'SimSun, "宋体", serif' },
+  { label: '黑体', value: 'SimHei, "黑体", sans-serif' },
+  { label: '楷体', value: 'KaiTi, "楷体", serif' },
+  { label: 'Georgia', value: 'Georgia, serif' },
+  { label: 'Arial', value: 'Arial, sans-serif' },
+  { label: 'Times New Roman', value: '"Times New Roman", serif' },
+  { label: 'Courier New', value: '"Courier New", monospace' }
+]
+
+// 字号选项
+const fontSizeOptions = [
+  { label: '12px', value: 12 },
+  { label: '14px', value: 14 },
+  { label: '16px', value: 16 },
+  { label: '18px', value: 18 },
+  { label: '20px', value: 20 },
+  { label: '22px', value: 22 },
+  { label: '24px', value: 24 },
+  { label: '26px', value: 26 },
+  { label: '28px', value: 28 },
+  { label: '30px', value: 30 },
+  { label: '32px', value: 32 }
+]
+
+// 行高选项
+const lineHeightOptions = [
+  { label: '1.2', value: 1.2 },
+  { label: '1.3', value: 1.3 },
+  { label: '1.4', value: 1.4 },
+  { label: '1.5', value: 1.5 },
+  { label: '1.6', value: 1.6 },
+  { label: '1.7', value: 1.7 },
+  { label: '1.8', value: 1.8 },
+  { label: '1.9', value: 1.9 },
+  { label: '2.0', value: 2.0 },
+  { label: '2.1', value: 2.1 },
+  { label: '2.2', value: 2.2 }
+]
+
+/**
+ * 从 localStorage 加载主题设置
+ */
+const loadThemeSettings = () => {
+  try {
+    const saved = localStorage.getItem('epubReaderTheme')
+    if (saved) {
+      const savedTheme = JSON.parse(saved)
+      theme.value = { ...theme.value, ...savedTheme }
+    }
+  } catch (error) {
+    console.warn('加载主题设置失败:', error)
+  }
+}
+
+/**
+ * 保存主题设置到 localStorage
+ */
+const saveThemeSettings = () => {
+  try {
+    localStorage.setItem('epubReaderTheme', JSON.stringify(theme.value))
+  } catch (error) {
+    console.warn('保存主题设置失败:', error)
+  }
+}
+
+/**
+ * 应用主题到当前阅读内容
+ */
+const applyTheme = () => {
+  if (!rendition.value) return
+
+  const viewerElement = document.getElementById('viewer')
+  if (viewerElement) {
+    // 应用背景色到 viewer 容器
+    viewerElement.style.backgroundColor = theme.value.backgroundColor
+
+    // 直接修改当前显示的 iframe 中的样式
+    const iframes = viewerElement.querySelectorAll('iframe')
+    iframes.forEach(iframe => {
+      try {
+        const doc = iframe.contentDocument || iframe.contentWindow.document
+        if (doc) {
+          let styleTag = doc.getElementById('epub-theme-style')
+          if (!styleTag) {
+            styleTag = doc.createElement('style')
+            styleTag.id = 'epub-theme-style'
+            doc.head.appendChild(styleTag)
+          }
+          styleTag.textContent = `
+            html {
+              background-color: ${theme.value.backgroundColor} !important;
+            }
+            body {
+              font-family: ${theme.value.fontFamily} !important;
+              line-height: ${theme.value.lineHeight} !important;
+              color: ${theme.value.fontColor} !important;
+              background-color: ${theme.value.backgroundColor} !important;
+              font-size: ${theme.value.fontSize}px !important;
+            }
+            p {
+              text-indent: 2em;
+              margin-bottom: 0.8em;
+              color: ${theme.value.fontColor} !important;
+            }
+            h1, h2, h3, h4, h5, h6 {
+              color: ${theme.value.fontColor} !important;
+            }
+            img {
+              max-width: 100%;
+              height: auto;
+            }
+            a {
+              color: #1890ff;
+              text-decoration: none;
+            }
+            a:hover {
+              text-decoration: underline;
+            }
+          `
+        }
+      } catch (e) {
+        console.warn('无法访问 iframe:', e)
+      }
+    })
+  }
+
+  // 清除旧钩子并注册新钩子（用于后续加载的章节）
+  rendition.value.hooks.content.clear()
+  setupHooks()
+}
 
 // 计算属性
 const progressPercent = computed(() => progress.value)
@@ -358,17 +594,32 @@ const handleFileUpload = (file) => {
 const setupHooks = () => {
   if (!rendition.value) return
 
+  // 应用背景色到 viewer 容器
+  const viewerElement = document.getElementById('viewer')
+  if (viewerElement) {
+    viewerElement.style.backgroundColor = theme.value.backgroundColor
+  }
+
   rendition.value.hooks.content.register((contents, view) => {
     const style = contents.document.createElement('style')
     style.textContent = `
+      html {
+        background-color: ${theme.value.backgroundColor} !important;
+      }
       body {
-        font-family: -apple-system, BlinkMacSystemFont, "Microsoft YaHei", "微软雅黑", serif;
-        line-height: 1.8;
-        color: #262626;
+        font-family: ${theme.value.fontFamily} !important;
+        line-height: ${theme.value.lineHeight} !important;
+        color: ${theme.value.fontColor} !important;
+        background-color: ${theme.value.backgroundColor} !important;
+        font-size: ${theme.value.fontSize}px !important;
       }
       p {
         text-indent: 2em;
         margin-bottom: 0.8em;
+        color: ${theme.value.fontColor} !important;
+      }
+      h1, h2, h3, h4, h5, h6 {
+        color: ${theme.value.fontColor} !important;
       }
       img {
         max-width: 100%;
@@ -551,6 +802,7 @@ const handleKeydown = (event) => {
 
 onMounted(() => {
   console.log('阅读器已加载')
+  loadThemeSettings()
   checkMobile()
   window.addEventListener('resize', checkMobile)
   window.addEventListener('keydown', handleKeydown)
