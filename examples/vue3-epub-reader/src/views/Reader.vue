@@ -18,15 +18,21 @@
         </div>
 
         <!-- 目录列表 -->
-        <div class="toc-container" v-if="toc.length > 0">
-          <div
-            v-for="(item, index) in toc"
-            :key="index"
-            :class="['toc-item', { 'active': currentTocIndex === index }, `level-${item.level || 1}`]"
-            @click="goToTocItem(item)"
+        <div class="toc-container" v-if="tocTree.length > 0">
+          <el-tree
+            :data="tocTree"
+            node-key="id"
+            :props="{ children: 'subitems', label: 'label' }"
+            :expand-on-click-node="true"
+            default-expand-all
+            @node-click="handleNodeClick"
+            highlight-current
+            :current-node-key="currentTocIndex"
           >
-            {{ item.label }}
-          </div>
+            <template #default="{ node, data }">
+              <span class="tree-node-label">{{ data.label }}</span>
+            </template>
+          </el-tree>
         </div>
 
         <!-- 书籍信息 -->
@@ -177,7 +183,8 @@ import {
   Upload,
   Loading,
   DocumentAdd,
-  Close
+  Close,
+  Document
 } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 
@@ -187,7 +194,8 @@ const rendition = ref(null)
 const bookTitle = ref('')
 const metadata = ref(null)
 const toc = ref([])
-const currentTocIndex = ref(0)
+const tocTree = ref([])
+const currentTocIndex = ref('')
 const progress = ref(0)
 const bookLoaded = ref(false)
 const errorMessage = ref('')
@@ -199,6 +207,30 @@ const sidebarVisible = ref(true)
 
 // 计算属性
 const progressPercent = computed(() => progress.value)
+
+/**
+ * 格式化 epubjs 返回的树状目录结构
+ * epubjs 已经返回树形结构，只需添加必要的属性
+ */
+const formatTocTree = (items, parentId = '') => {
+  if (!items || items.length === 0) return []
+
+  return items.map((item, index) => {
+    const nodeId = `toc-${parentId}-${index}`
+    const node = {
+      id: nodeId,
+      label: item.label,
+      href: item.href,
+      subitems: item.subitems ? formatTocTree(item.subitems, nodeId) : []
+    }
+
+    // 保留原始属性
+    if (item.cfi) node.cfi = item.cfi
+    if (item.index !== undefined) node.index = item.index
+
+    return node
+  })
+}
 
 /**
  * 加载 EPUB 文件
@@ -236,7 +268,7 @@ const loadEpub = (epubPath) => {
       rendition.value.on('relocated', (location) => {
         progress.value = (location.progress || 0) * 100
         updateCurrentSpineIndex(location)
-        updateCurrentTocIndex(location)
+        updateCurrentTocNode(location)
       })
 
       // 监听错误
@@ -258,11 +290,10 @@ const loadEpub = (epubPath) => {
       // 加载目录 - 等待 book ready
       book.value.loaded.navigation.then(() => {
         const bookToc = book.value?.navigation?.toc || []
-        toc.value = bookToc.map((item, index) => ({
-          ...item,
-          index,
-          level: item.parent ? 2 : 1
-        }))
+        console.log('原始目录结构:', bookToc)
+        toc.value = bookToc
+        // 直接使用 epubjs 返回的树状结构
+        tocTree.value = formatTocTree(bookToc)
       }).catch((error) => {
         console.warn('加载目录失败:', error)
       })
@@ -415,19 +446,21 @@ const handleProgressChange = (value) => {
 }
 
 /**
- * 点击目录跳转
+ * 点击目录跳转（树节点）
  */
-const goToTocItem = (item) => {
+const handleNodeClick = (data) => {
   if (!rendition.value) return
   try {
-    currentTocIndex.value = item.index || 0
-    rendition.value.display(item.href || item.cfi).catch(() => {
-      errorMessage.value = '跳转失败'
-    })
+    // 只在有 href 时才跳转
+    if (data.href) {
+      rendition.value.display(data.href).catch(() => {
+        errorMessage.value = '跳转失败'
+      })
 
-    // 移动端关闭侧边栏
-    if (isMobile.value) {
-      sidebarVisible.value = false
+      // 移动端关闭侧边栏
+      if (isMobile.value) {
+        sidebarVisible.value = false
+      }
     }
   } catch (error) {
     console.error('目录跳转错误:', error)
@@ -454,21 +487,37 @@ const updateCurrentSpineIndex = (location) => {
 }
 
 /**
- * 更新当前目录索引
+ * 递归查找目录树中对应 href 的节点 ID
  */
-const updateCurrentTocIndex = (location) => {
+const findTocNodeId = (items, targetHref) => {
+  if (!items) return null
+
+  for (const item of items) {
+    if (item.href === targetHref || item.href?.endsWith(targetHref)) {
+      return item.id
+    }
+    if (item.subitems) {
+      const found = findTocNodeId(item.subitems, targetHref)
+      if (found) return found
+    }
+  }
+  return null
+}
+
+/**
+ * 更新当前目录索引和高亮节点
+ */
+const updateCurrentTocNode = (location) => {
   try {
-    if (location?.start && toc.value.length > 0) {
+    if (location?.start && tocTree.value.length > 0) {
       const href = location.start.href
-      const index = toc.value.findIndex(
-        (item) => item.href === href || item.href?.endsWith(href)
-      )
-      if (index !== -1) {
-        currentTocIndex.value = index
+      const nodeId = findTocNodeId(tocTree.value, href)
+      if (nodeId) {
+        currentTocIndex.value = nodeId
       }
     }
   } catch (error) {
-    // 忽略错误
+    console.error('更新目录错误:', error)
   }
 }
 
@@ -559,34 +608,44 @@ onUnmounted(() => {
   padding: 0;
 }
 
-.toc-item {
-  padding: 10px 15px;
-  border-left: 3px solid transparent;
-  cursor: pointer;
-  transition: all 0.3s;
-  border-bottom: 1px solid #f0f0f0;
+:deep(.el-tree) {
+  background: transparent;
+  border: none;
+}
+
+:deep(.el-tree-node) {
   font-size: 13px;
-  user-select: none;
-  color: var(--text-secondary);
 }
 
-.toc-item:hover {
+:deep(.el-tree-node__content) {
+  height: auto;
+  padding: 8px 0;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+:deep(.el-tree-node:hover > .el-tree-node__content) {
   background: var(--bg-color);
-  border-left-color: var(--primary-color);
-  padding-left: 18px;
-  color: var(--text-color);
 }
 
-.toc-item.active {
+:deep(.el-tree-node.is-current > .el-tree-node__content) {
   background: var(--primary-light);
-  border-left-color: var(--primary-color);
   color: var(--primary-color);
   font-weight: 500;
 }
 
-.toc-item.level-2 {
-  padding-left: 30px;
-  font-size: 12px;
+:deep(.el-tree-node.is-current > .el-tree-node__content .el-tree-node__label) {
+  color: var(--primary-color);
+}
+
+.tree-node-label {
+  user-select: none;
+  color: var(--text-secondary);
+  display: inline-block;
+  padding: 2px 0;
+}
+
+:deep(.el-tree-node.is-current .tree-node-label) {
+  color: var(--primary-color);
 }
 
 .metadata-panel {
