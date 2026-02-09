@@ -82,7 +82,7 @@ class IframeView {
 
 		this.contentDiv = document.createElement("div");
 		this.contentDiv.id = this.id;
-		this.contentDiv.style.overflow = "hidden";
+		// this.contentDiv.style.overflow = "hidden";
 		this.contentDiv.style.border = "none";
 		this.contentDiv.setAttribute("enable-annotation", "true");
 
