@@ -1,10 +1,16 @@
 {
-  "name": "epubjs",
+  "name": "elegant-epub",
   "version": "0.3.93",
   "description": "Parse and Render Epubs",
   "main": "lib/index.js",
-  "module": "src/index.js",
+  "module": "lib/index.js",
   "types": "types/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./lib/index.js",
+      "require": "./lib/index.js"
+    }
+  },
   "repository": "https://github.com/futurepress/epub.js",
   "directories": {
     "test": "test"

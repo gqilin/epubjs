@@ -1,0 +1,749 @@
+<template>
+  <div class="reader-page">
+    <el-container>
+      <!-- 左侧边栏 -->
+      <el-aside width="250px" class="reader-aside" v-if="!isMobile || sidebarVisible">
+        <div class="sidebar-header">
+          <el-icon><DocumentCopy /></el-icon>
+          <span>目录</span>
+          <el-button
+            v-if="isMobile"
+            type="primary"
+            link
+            @click="sidebarVisible = false"
+            style="margin-left: auto"
+          >
+            <el-icon><Close /></el-icon>
+          </el-button>
+        </div>
+
+        <!-- 目录列表 -->
+        <div class="toc-container" v-if="toc.length > 0">
+          <div
+            v-for="(item, index) in toc"
+            :key="index"
+            :class="['toc-item', { 'active': currentTocIndex === index }, `level-${item.level || 1}`]"
+            @click="goToTocItem(item)"
+          >
+            {{ item.label }}
+          </div>
+        </div>
+
+        <!-- 书籍信息 -->
+        <div class="metadata-panel" v-if="metadata">
+          <div class="info-item">
+            <span class="info-label">作者:</span>
+            <span class="info-value">{{ metadata.creator || '未知' }}</span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">出版社:</span>
+            <span class="info-value">{{ metadata.publisher || '未知' }}</span>
+          </div>
+          <div class="info-item">
+            <span class="info-label">语言:</span>
+            <span class="info-value">{{ metadata.language || '未知' }}</span>
+          </div>
+        </div>
+      </el-aside>
+
+      <!-- 主容器 -->
+      <el-main class="reader-main">
+        <!-- 工具栏 -->
+        <div class="reader-toolbar">
+          <div class="toolbar-left">
+            <el-button-group>
+              <el-button
+                @click="prevPage"
+                :disabled="!rendition"
+                type="primary"
+              >
+                <el-icon><ArrowLeft /></el-icon>
+                上一页
+              </el-button>
+              <el-button
+                @click="nextPage"
+                :disabled="!rendition"
+                type="primary"
+              >
+                下一页
+                <el-icon><ArrowRight /></el-icon>
+              </el-button>
+            </el-button-group>
+
+            <el-button
+              v-if="isMobile && toc.length > 0"
+              @click="sidebarVisible = true"
+              type="default"
+            >
+              <el-icon><Menu /></el-icon>
+              目录
+            </el-button>
+          </div>
+
+          <!-- 进度条 -->
+          <div class="progress-section">
+            <el-slider
+              v-model="progress"
+              :min="0"
+              :max="100"
+              @change="handleProgressChange"
+              :format-tooltip="() => progressPercent.toFixed(1) + '%'"
+              style="flex: 1"
+            />
+            <span class="progress-text">{{ progressPercent.toFixed(1) }}%</span>
+          </div>
+
+          <!-- 右侧按钮 -->
+          <div class="toolbar-right">
+            <el-statistic title="章节" :value="currentSpineIndex + 1" class="stat-item" />
+            <el-divider direction="vertical" />
+            <el-statistic title="总数" :value="totalSpines" class="stat-item" />
+
+            <el-upload
+              action="#"
+              :auto-upload="false"
+              accept=".epub"
+              @change="handleFileUpload"
+            >
+              <template #trigger>
+                <el-button type="success">
+                  <el-icon><Upload /></el-icon>
+                  上传
+                </el-button>
+              </template>
+            </el-upload>
+          </div>
+        </div>
+
+        <!-- 消息提示 -->
+        <el-alert
+          v-if="errorMessage"
+          :title="errorMessage"
+          type="error"
+          :closable="true"
+          @close="errorMessage = ''"
+          style="margin-bottom: 16px"
+        />
+        <el-alert
+          v-if="infoMessage"
+          :title="infoMessage"
+          type="info"
+          :closable="true"
+          @close="infoMessage = ''"
+          style="margin-bottom: 16px"
+        />
+
+        <!-- 阅读器容器 -->
+        <div id="viewer" v-show="rendition" class="viewer">
+          <div v-if="!bookLoaded" class="loading">
+            <el-icon class="spinner"><Loading /></el-icon>
+            <span>正在加载书籍...</span>
+          </div>
+        </div>
+
+        <!-- 初始提示 -->
+        <el-empty
+          v-show="!rendition"
+          description="请上传一个 EPUB 文件开始阅读"
+          :image-size="200"
+        >
+          <el-upload
+            drag
+            action="#"
+            :auto-upload="false"
+            accept=".epub"
+            @change="handleFileUpload"
+          >
+            <template #default>
+              <el-icon class="el-icon--upload"><DocumentAdd /></el-icon>
+              <div class="el-upload__text">
+                拖拽 EPUB 文件到此或 <em>点击上传</em>
+              </div>
+            </template>
+          </el-upload>
+        </el-empty>
+      </el-main>
+    </el-container>
+  </div>
+</template>
+
+<script setup>
+import { ref, computed, onMounted, onUnmounted } from 'vue'
+import {
+  DocumentCopy,
+  ArrowLeft,
+  ArrowRight,
+  Menu,
+  Upload,
+  Loading,
+  DocumentAdd,
+  Close
+} from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
+
+// 响应式数据
+const book = ref(null)
+const rendition = ref(null)
+const bookTitle = ref('')
+const metadata = ref(null)
+const toc = ref([])
+const currentTocIndex = ref(0)
+const progress = ref(0)
+const bookLoaded = ref(false)
+const errorMessage = ref('')
+const infoMessage = ref('')
+const totalSpines = ref(0)
+const currentSpineIndex = ref(0)
+const isMobile = ref(false)
+const sidebarVisible = ref(true)
+
+// 计算属性
+const progressPercent = computed(() => progress.value)
+
+/**
+ * 加载 EPUB 文件
+ */
+const loadEpub = (epubPath) => {
+  try {
+    errorMessage.value = ''
+    infoMessage.value = '正在加载书籍...'
+    bookLoaded.value = false
+
+    // 动态导入 ePub
+    import('elegant-epub').then((module) => {
+      const ePub = module.default
+
+      book.value = ePub(epubPath)
+
+      // 渲染到容器
+      rendition.value = book.value.renderTo('viewer', {
+        width: '100%',
+        height: '100%',
+        flow: 'paginated',
+        allowScriptedContent: false
+      })
+
+      // 监听就绪事件
+      rendition.value.on('ready', () => {
+        console.log('渲染器已就绪')
+        infoMessage.value = ''
+        bookLoaded.value = true
+        setupHooks()
+        displayFirstPage()
+      })
+
+      // 监听位置变化
+      rendition.value.on('relocated', (location) => {
+        progress.value = (location.progress || 0) * 100
+        updateCurrentSpineIndex(location)
+        updateCurrentTocIndex(location)
+      })
+
+      // 监听错误
+      rendition.value.on('error', (error) => {
+        console.error('渲染错误:', error)
+        errorMessage.value = '渲染错误: ' + error.message
+        bookLoaded.value = true // 允许显示错误
+      })
+
+      // 加载书籍元数据
+      book.value.loaded.metadata.then((meta) => {
+        metadata.value = meta
+        bookTitle.value = meta.title || '未知书名'
+        document.title = bookTitle.value
+      }).catch((error) => {
+        console.warn('加载元数据失败:', error)
+      })
+
+      // 加载目录 - 等待 book ready
+      book.value.loaded.navigation.then(() => {
+        const bookToc = book.value?.navigation?.toc || []
+        toc.value = bookToc.map((item, index) => ({
+          ...item,
+          index,
+          level: item.parent ? 2 : 1
+        }))
+      }).catch((error) => {
+        console.warn('加载目录失败:', error)
+      })
+
+      // 获取 Spine 信息
+      if (book.value.spine?.items) {
+        totalSpines.value = book.value.spine.items.length
+      }
+
+      // 添加超时检查 - 如果 5 秒后还未 ready，强制显示
+      setTimeout(() => {
+        if (!bookLoaded.value && rendition.value) {
+          console.warn('Ready 事件未触发，强制初始化')
+          bookLoaded.value = true
+          infoMessage.value = ''
+          setupHooks()
+          displayFirstPage()
+        }
+      }, 5000)
+    }).catch((error) => {
+      console.error('导入 ePub 失败:', error)
+      errorMessage.value = '导入库失败: ' + error.message
+    })
+  } catch (error) {
+    console.error('加载失败:', error)
+    errorMessage.value = '加载失败: ' + error.message
+  }
+}
+
+/**
+ * 处理文件上传
+ */
+const handleFileUpload = (file) => {
+  if (!file || !file.raw) return
+
+  if (!file.raw.name.endsWith('.epub')) {
+    ElMessage.error('请选择 EPUB 文件')
+    return
+  }
+
+  const reader = new FileReader()
+  reader.onload = (e) => {
+    try {
+      const arrayBuffer = e.target?.result
+      if (!arrayBuffer) throw new Error('文件读取失败')
+
+      loadEpub(arrayBuffer)
+      infoMessage.value = `✅ 已加载: ${file.raw.name}`
+      ElMessage.success(`已加载: ${file.raw.name}`)
+    } catch (error) {
+      console.error('文件处理错误:', error)
+      errorMessage.value = '文件处理失败: ' + error.message
+      ElMessage.error('文件处理失败')
+    }
+  }
+  reader.readAsArrayBuffer(file.raw)
+}
+
+/**
+ * 设置内容钩子
+ */
+const setupHooks = () => {
+  if (!rendition.value) return
+
+  rendition.value.hooks.content.register((contents, view) => {
+    const style = contents.document.createElement('style')
+    style.textContent = `
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Microsoft YaHei", "微软雅黑", serif;
+        line-height: 1.8;
+        color: #262626;
+      }
+      p {
+        text-indent: 2em;
+        margin-bottom: 0.8em;
+      }
+      img {
+        max-width: 100%;
+        height: auto;
+      }
+      a {
+        color: #1890ff;
+        text-decoration: none;
+      }
+      a:hover {
+        text-decoration: underline;
+      }
+    `
+    contents.document.head.appendChild(style)
+  })
+}
+
+/**
+ * 显示第一页
+ */
+const displayFirstPage = () => {
+  if (!rendition.value) {
+    console.error('rendition 未初始化')
+    return
+  }
+
+  console.log('尝试显示第一页')
+  rendition.value.display()
+    .then(() => {
+      console.log('第一页显示成功')
+    })
+    .catch((error) => {
+      console.error('显示第一页失败:', error)
+      errorMessage.value = '显示第一页失败: ' + error.message
+      // 但仍然设置为已加载，允许用户继续操作
+      bookLoaded.value = true
+    })
+}
+
+/**
+ * 翻页 - 下一页
+ */
+const nextPage = () => {
+  if (!rendition.value) return
+  rendition.value.next().catch(() => {
+    ElMessage.info('已到最后一页')
+  })
+}
+
+/**
+ * 翻页 - 上一页
+ */
+const prevPage = () => {
+  if (!rendition.value) return
+  rendition.value.prev().catch(() => {
+    ElMessage.info('已到第一页')
+  })
+}
+
+/**
+ * 处理进度条变化
+ */
+const handleProgressChange = (value) => {
+  if (!rendition.value || !book.value.locations) return
+
+  try {
+    const percent = value / 100
+    if (book.value.locations.cfiFromPercentage) {
+      const cfi = book.value.locations.cfiFromPercentage(percent)
+      rendition.value.display(cfi)
+    }
+  } catch (error) {
+    console.error('进度条错误:', error)
+  }
+}
+
+/**
+ * 点击目录跳转
+ */
+const goToTocItem = (item) => {
+  if (!rendition.value) return
+  try {
+    currentTocIndex.value = item.index || 0
+    rendition.value.display(item.href || item.cfi).catch(() => {
+      errorMessage.value = '跳转失败'
+    })
+
+    // 移动端关闭侧边栏
+    if (isMobile.value) {
+      sidebarVisible.value = false
+    }
+  } catch (error) {
+    console.error('目录跳转错误:', error)
+  }
+}
+
+/**
+ * 更新当前 Spine 索引
+ */
+const updateCurrentSpineIndex = (location) => {
+  try {
+    if (location?.start && book.value.spine) {
+      const href = location.start.href
+      const index = book.value.spine.items.findIndex(
+        (item) => item.href === href || item.href?.endsWith(href)
+      )
+      if (index !== -1) {
+        currentSpineIndex.value = index
+      }
+    }
+  } catch (error) {
+    console.error('更新索引错误:', error)
+  }
+}
+
+/**
+ * 更新当前目录索引
+ */
+const updateCurrentTocIndex = (location) => {
+  try {
+    if (location?.start && toc.value.length > 0) {
+      const href = location.start.href
+      const index = toc.value.findIndex(
+        (item) => item.href === href || item.href?.endsWith(href)
+      )
+      if (index !== -1) {
+        currentTocIndex.value = index
+      }
+    }
+  } catch (error) {
+    // 忽略错误
+  }
+}
+
+/**
+ * 检查移动设备
+ */
+const checkMobile = () => {
+  isMobile.value = window.innerWidth < 768
+  if (!isMobile.value) {
+    sidebarVisible.value = true
+  }
+}
+
+/**
+ * 处理键盘快捷键
+ */
+const handleKeydown = (event) => {
+  if (!rendition.value) return
+
+  switch (event.key) {
+    case 'ArrowRight':
+      nextPage()
+      event.preventDefault()
+      break
+    case 'ArrowLeft':
+      prevPage()
+      event.preventDefault()
+      break
+  }
+}
+
+onMounted(() => {
+  console.log('阅读器已加载')
+  checkMobile()
+  window.addEventListener('resize', checkMobile)
+  window.addEventListener('keydown', handleKeydown)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('resize', checkMobile)
+  window.removeEventListener('keydown', handleKeydown)
+  rendition.value?.destroy()
+  book.value?.destroy()
+})
+</script>
+
+<style scoped>
+.reader-page {
+  width: 100%;
+  height: calc(100vh - 60px);
+  background: var(--bg-color);
+}
+
+:deep(.el-container) {
+  height: 100%;
+}
+
+:deep(.el-aside) {
+  background: var(--bg-light);
+  border-right: 1px solid var(--border-color);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+:deep(.el-main) {
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.sidebar-header {
+  padding: 15px;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-color);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: bold;
+  color: var(--text-color);
+  flex-shrink: 0;
+}
+
+.toc-container {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0;
+}
+
+.toc-item {
+  padding: 10px 15px;
+  border-left: 3px solid transparent;
+  cursor: pointer;
+  transition: all 0.3s;
+  border-bottom: 1px solid #f0f0f0;
+  font-size: 13px;
+  user-select: none;
+  color: var(--text-secondary);
+}
+
+.toc-item:hover {
+  background: var(--bg-color);
+  border-left-color: var(--primary-color);
+  padding-left: 18px;
+  color: var(--text-color);
+}
+
+.toc-item.active {
+  background: var(--primary-light);
+  border-left-color: var(--primary-color);
+  color: var(--primary-color);
+  font-weight: 500;
+}
+
+.toc-item.level-2 {
+  padding-left: 30px;
+  font-size: 12px;
+}
+
+.metadata-panel {
+  padding: 15px;
+  background: var(--bg-color);
+  border-top: 1px solid var(--border-color);
+  font-size: 12px;
+  max-height: 100px;
+  overflow-y: auto;
+  flex-shrink: 0;
+}
+
+.info-item {
+  margin-bottom: 8px;
+}
+
+.info-label {
+  font-weight: bold;
+  color: var(--text-color);
+}
+
+.info-value {
+  color: var(--text-secondary);
+  margin-left: 5px;
+}
+
+.reader-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 20px;
+  background: var(--bg-color);
+  border-bottom: 1px solid var(--border-color);
+  gap: 15px;
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+
+.toolbar-left {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.progress-section {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1;
+  min-width: 200px;
+}
+
+.progress-text {
+  font-size: 12px;
+  color: var(--text-secondary);
+  min-width: 50px;
+  text-align: right;
+}
+
+.toolbar-right {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+:deep(.el-statistic__title) {
+  font-size: 12px;
+}
+
+:deep(.el-statistic__content) {
+  font-size: 14px;
+}
+
+.stat-item {
+  min-width: 60px;
+}
+
+:deep(.el-divider--vertical) {
+  height: 20px;
+  margin: 0 8px;
+}
+
+.viewer {
+  flex: 1;
+  overflow: hidden;
+  background: white;
+}
+
+.loading {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100%;
+  color: var(--text-tertiary);
+  font-size: 14px;
+  gap: 10px;
+}
+
+.spinner {
+  font-size: 24px;
+  animation: spin 1s linear infinite;
+  color: var(--primary-color);
+}
+
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+:deep(.el-empty) {
+  padding: 40px 20px;
+}
+
+:deep(.el-upload-dragger) {
+  width: 100%;
+  max-width: 400px;
+}
+
+/* 响应式设计 */
+@media (max-width: 768px) {
+  .reader-aside {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    z-index: 100;
+    width: 250px !important;
+    background: white;
+    box-shadow: 2px 0 8px rgba(0, 0, 0, 0.1);
+    display: none;
+  }
+
+  .reader-aside {
+    display: flex;
+  }
+
+  .reader-toolbar {
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .progress-section {
+    width: 100%;
+    order: 3;
+  }
+
+  .toolbar-right {
+    width: 100%;
+    justify-content: flex-end;
+  }
+
+  :deep(.el-upload-dragger) {
+    max-width: 100%;
+  }
+}
+</style>
